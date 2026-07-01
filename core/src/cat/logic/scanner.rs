@@ -1,18 +1,24 @@
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::thread;
-use std::sync::{Arc, mpsc::{self, Receiver}};
-use std::sync::Mutex;
 use std::collections::HashMap;
-use rayon::prelude::*;
+use std::fs;
 use std::io::Read;
-use serde::{Serialize, Deserialize};
+use std::path::{Path, PathBuf};
+use std::sync::{mpsc::{self, Receiver}, Arc, Mutex};
+use std::thread;
 
-use nyanko::cat::unit::{Battle, UnitBuy, LevelCurve, TalentCost, Talent, UnitEvolve};
-use crate::cat::data::{unitbuy, unitlevel, unitevolve, unitexplanation, skilllevel, skilldescriptions, skillacquisition};
+use nyanko::cat::unit::{
+    Battle, LevelCurve, Talent,
+    TalentCost, UnitBuy, UnitEvolve
+};
+use nyanko::graphics::actor::Animation;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+
 use crate::cat::paths;
+use crate::cat::waiter::{
+    skillacquisition, skilldescriptions, skilllevel,
+    unitbuy, unitevolve, unitexplanation, unitlevel,
+};
 use crate::settings::logic::state::ScannerConfig;
-use crate::global::formats::maanim::Animation;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CatEntry {
@@ -71,12 +77,12 @@ pub fn start_scan(config: ScannerConfig) -> Receiver<CatEntry> {
             return;
         }
 
-        let level_curves_arc = Arc::new(unitlevel::load_level_curves(cats_directory, priority));
-        let unit_buy_map_arc = Arc::new(unitbuy::load_unitbuy(cats_directory, priority));
-        let talent_map_arc = Arc::new(skillacquisition::load(cats_directory, priority));
-        let evolve_text_map_arc = Arc::new(unitevolve::load(cats_directory, priority));
-        let talent_costs_arc = Arc::new(skilllevel::load(cats_directory, priority));
-        let skill_descriptions_arc = Arc::new(skilldescriptions::load(cats_directory, priority));
+        let level_curves_arc = Arc::new(unitlevel(cats_directory, priority));
+        let unit_buy_map_arc = Arc::new(unitbuy(cats_directory, priority));
+        let talent_map_arc = Arc::new(skillacquisition(cats_directory, priority));
+        let evolve_text_map_arc = Arc::new(unitevolve(cats_directory, priority));
+        let talent_costs_arc = Arc::new(skilllevel(cats_directory, priority));
+        let skill_descriptions_arc = Arc::new(skilldescriptions(cats_directory, priority));
 
         let folder_entries: Vec<PathBuf> = match fs::read_dir(cats_directory) {
             Ok(read_dir_iter) => read_dir_iter
@@ -128,12 +134,12 @@ pub fn scan_single(id: u32, config: &ScannerConfig) -> Option<CatEntry> {
     let unitlevel_resolved = crate::global::resolver::get(cats_directory, [paths::UNIT_LEVEL], priority).into_iter().next();
     if unitbuy_resolved.is_none() || unitlevel_resolved.is_none() { return None; }
 
-    let curves = unitlevel::load_level_curves(cats_directory, priority);
-    let buys = unitbuy::load_unitbuy(cats_directory, priority);
-    let talents = skillacquisition::load(cats_directory, priority);
-    let evolve = unitevolve::load(cats_directory, priority);
-    let costs = Arc::new(skilllevel::load(cats_directory, priority));
-    let descs = Arc::new(skilldescriptions::load(cats_directory, priority));
+    let curves = unitlevel(cats_directory, priority);
+    let buys = unitbuy(cats_directory, priority);
+    let talents = skillacquisition(cats_directory, priority);
+    let evolve = unitevolve(cats_directory, priority);
+    let costs = Arc::new(skilllevel(cats_directory, priority));
+    let descs = Arc::new(skilldescriptions(cats_directory, priority));
 
     let folder_path = cats_directory.join(format!("{:03}", id));
 
@@ -254,7 +260,7 @@ pub fn process_cat_entry(
             && let Some(resolved) = crate::global::resolver::get(parent_dir, [anim_file_name], priority).into_iter().next()
             && let Ok(bytes) = fs::read(&resolved) {
             let content = String::from_utf8_lossy(&bytes);
-            let duration = Animation::scan_duration(&content);
+            let duration = Animation::scan_duration(content.as_bytes());
             attack_anim_frames[i] = if duration > 0 { duration + 1 } else { 0 };
         }
     }
@@ -272,7 +278,7 @@ pub fn process_cat_entry(
 
     }
 
-    let explanation = unitexplanation::load(cat_id, original_folder_path, priority);
+    let explanation = unitexplanation(cat_id, original_folder_path, priority);
 
     let egg_ids_opt = if egg_ids.0 != -1 || egg_ids.1 != -1 {
         Some(egg_ids)

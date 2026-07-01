@@ -1,16 +1,17 @@
-use std::path::{Path, PathBuf};
-use rayon::prelude::*;
 use std::fs::{self, File};
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
+
 use nyanko::enemy::unit::Battle;
+use nyanko::graphics::actor::Animation;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::enemy::paths;
-use crate::enemy::data::{t_unit, enemyname, enemypicturebook};
+use crate::enemy::waiter::{enemyname, enemypicturebook, t_unit};
 use crate::settings::logic::state::ScannerConfig;
-use crate::global::formats::maanim::Animation;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EnemyEntry {
@@ -51,10 +52,10 @@ pub fn start_scan(config: ScannerConfig) -> Receiver<EnemyEntry> {
         let Some(t_unit_parent) = t_unit_p.parent() else { return; };
         let Some(t_unit_name) = t_unit_p.file_name().and_then(|n| n.to_str()) else { return; };
         
-        let Some(raw_enemies) = t_unit::load_all(t_unit_parent, t_unit_name, priority) else { return; };
+        let Some(raw_enemies) = t_unit(t_unit_parent, t_unit_name, priority) else { return; };
 
-        let names = enemyname::load(root, priority);
-        let descriptions = enemypicturebook::load(root, priority);
+        let names = enemyname(root, priority);
+        let descriptions = enemypicturebook(root, priority);
 
         let stream_sender = std::sync::Arc::new(Mutex::new(tx));
 
@@ -82,7 +83,7 @@ pub fn start_scan(config: ScannerConfig) -> Receiver<EnemyEntry> {
                 && let Some(resolved_atk) = crate::global::resolver::get(parent, [name], priority).into_iter().next()
                     && let Ok(bytes) = fs::read(&resolved_atk) {
                         let content = String::from_utf8_lossy(&bytes);
-                        let duration = Animation::scan_duration(&content);
+                        let duration = Animation::scan_duration(content.as_bytes());
                         atk_anim_frames = if duration > 0 { duration + 1 } else { 0 };
                     }
 
@@ -122,11 +123,11 @@ pub fn scan_single(id: u32, config: &ScannerConfig) -> Option<EnemyEntry> {
     let Some(t_unit_parent) = t_unit_p.parent() else { return None; };
     let Some(t_unit_name) = t_unit_p.file_name().and_then(|n| n.to_str()) else { return None; };
     
-    let raw_enemies = t_unit::load_all(t_unit_parent, t_unit_name, priority)?;
+    let raw_enemies = t_unit(t_unit_parent, t_unit_name, priority)?;
     let stats = raw_enemies.get(id as usize)?.clone();
 
-    let name = enemyname::load(root, priority).get(id as usize).cloned().unwrap_or_default();
-    let description = enemypicturebook::load(root, priority).get(id as usize).cloned().unwrap_or_default();
+    let name = enemyname(root, priority).get(id as usize).cloned().unwrap_or_default();
+    let description = enemypicturebook(root, priority).get(id as usize).cloned().unwrap_or_default();
     
     let icon_p = paths::icon(root, id);
     let mut resolved_icon = None;
@@ -152,7 +153,7 @@ pub fn scan_single(id: u32, config: &ScannerConfig) -> Option<EnemyEntry> {
         if let Some(p) = resolved_atk
             && let Ok(bytes) = fs::read(&p) {
                 let content = String::from_utf8_lossy(&bytes);
-                let duration = Animation::scan_duration(&content);
+                let duration = Animation::scan_duration(content.as_bytes());
                 atk_anim_frames = if duration > 0 { duration + 1 } else { 0 };
             }
     }

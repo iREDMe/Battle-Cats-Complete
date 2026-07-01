@@ -1,11 +1,13 @@
 use eframe::egui;
+
 use core::enemy::logic::abilities;
-use crate::global::sheet::GuiSpriteSheet;
-use crate::global::shared::{render_fallback_icon, text_with_superscript};
-use core::global::game::abilities::AbilityItem;
-use core::enemy::registry;
 use core::enemy::logic::context::EnemyRenderContext;
+use core::enemy::registry;
+use core::global::game::abilities::AbilityItem;
+
 use crate::global::assets::CustomAssets;
+use crate::global::shared::{render_fallback_icon, text_with_superscript};
+use crate::global::sheet::SpriteSheet;
 
 pub const ABILITY_X: f32 = 3.0;
 pub const ABILITY_Y: f32 = 5.0;
@@ -14,7 +16,7 @@ pub const TRAIT_Y: f32 = 7.0;
 pub fn render(
     ui: &mut egui::Ui,
     ctx: &EnemyRenderContext,
-    sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
     assets: &CustomAssets
 ) {
     ui.spacing_mut().item_spacing.y = 0.0;
@@ -64,7 +66,7 @@ pub fn render(
 pub fn render_icon_row(
     ui: &mut egui::Ui,
     items: &Vec<AbilityItem>,
-    sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
     border_color: egui::Color32,
     assets: &CustomAssets
 ) {
@@ -82,7 +84,7 @@ pub fn render_icon_row(
 fn render_single_icon(
     ui: &mut egui::Ui,
     item: &AbilityItem,
-    sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
     border: egui::Color32,
     assets: &CustomAssets
 ) -> egui::Response {
@@ -119,7 +121,7 @@ fn render_single_icon(
 pub fn render_list_view(
     ui: &mut egui::Ui,
     items: &Vec<AbilityItem>,
-    sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
     border_color: egui::Color32,
     assets: &CustomAssets
 ) {

@@ -1,18 +1,21 @@
-use eframe::egui;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use eframe::egui;
+use nyanko::graphics::actor::Unit;
 use serde::{Deserialize, Serialize};
-pub use core::cat::logic::state::DetailTab;
-use core::cat::logic::state::CatDataState;
-use crate::global::sheet::GuiSpriteSheet;
-use crate::global::assets::CustomAssets;
+
+use core::cat::logic::filter::CatFilterState;
+use core::cat::logic::state::{CatDataState, DetailTab};
 use core::global::context::GlobalContext;
 use core::settings::logic::Settings;
-use nyanko::graphics::animation::Unit;
 
-use crate::features::cat::list::CatList;
 use crate::features::animation::viewer::AnimViewer;
+use crate::global::assets::CustomAssets;
 use crate::global::shared::DragGuard;
+use crate::global::sheet::SpriteSheet;
+
+use super::list::CatList;
 
 pub const TOP_PANEL_PADDING: f32 = 2.5;
 pub const SEARCH_FILTER_GAP: f32 = 5.0;
@@ -27,14 +30,14 @@ pub struct CatListState {
     // UI Elements
     #[serde(skip)] pub cat_list: CatList,
     #[serde(skip)] pub anim_viewer: AnimViewer,
-    #[serde(skip)] pub filter_state: crate::features::cat::filter::CatFilterState,
+    #[serde(skip)] pub filter_state: CatFilterState,
     #[serde(skip)] pub drag_guard: DragGuard,
     #[serde(skip)] pub custom_assets: Option<CustomAssets>,
 
     // Texture Caches
     #[serde(skip)] pub detail_texture: Option<egui::TextureHandle>,
-    #[serde(skip)] pub img015_sheets: Vec<GuiSpriteSheet>,
-    #[serde(skip)] pub img022_sheets: Vec<GuiSpriteSheet>,
+    #[serde(skip)] pub img015_sheets: Vec<SpriteSheet>,
+    #[serde(skip)] pub img022_sheets: Vec<SpriteSheet>,
     #[serde(skip)] pub talent_name_textures: HashMap<String, egui::TextureHandle>,
     #[serde(skip)] pub gatya_item_textures: HashMap<i32, Option<egui::TextureHandle>>,
     #[serde(skip)] pub texture_cache_version: u64,

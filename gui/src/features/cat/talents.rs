@@ -1,15 +1,19 @@
-use eframe::egui;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::global::sheet::GuiSpriteSheet;
-use core::global::utils::autocrop;
-use core::settings::logic::Settings;
-use nyanko::cat::unit::{Battle, LevelCurve, TalentCost,Talent, TalentGroup};
+
+use eframe::egui;
+use nyanko::cat::abilities::get_talent;
+use nyanko::cat::unit::{Battle, LevelCurve, Talent, TalentCost, TalentGroup};
+use nyanko::common::img022;
+
 use core::cat::logic::talents;
 use core::cat::paths;
-use nyanko::cat::abilities::get_talent;
-use crate::global::shared::render_fallback_icon;
+use core::global::utils::autocrop;
+use core::settings::logic::Settings;
+
 use crate::global::assets::CustomAssets;
+use crate::global::shared::render_fallback_icon;
+use crate::global::sheet::SpriteSheet;
 
 pub const TALENT_NP_ICON_SIZE: f32 = 20.0;
 pub const TALENT_NP_TEXT_SIZE: f32 = 18.0;
@@ -19,8 +23,8 @@ pub const TALENT_SECTION_SPACING: f32 = 2.0;
 pub fn render(
     ui: &mut egui::Ui,
     talent_data: &Talent,
-    sheets: &[GuiSpriteSheet],
-    img022_sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
+    img022_sheets: &[SpriteSheet],
     name_cache: &mut HashMap<String, egui::TextureHandle>,
     descriptions: Option<&Vec<String>>,
     settings: &Settings,
@@ -71,8 +75,8 @@ fn render_talent_group(
     cat_id: u32,
     index: usize,
     group: &TalentGroup,
-    sheets: &[GuiSpriteSheet],
-    img022_sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
+    img022_sheets: &[SpriteSheet],
     name_cache: &mut HashMap<String, egui::TextureHandle>,
     descriptions: Option<&Vec<String>>,
     settings: &Settings,
@@ -131,7 +135,7 @@ fn render_talent_group(
 fn render_header(
     ui: &mut egui::Ui,
     group: &TalentGroup,
-    sheets: &[GuiSpriteSheet],
+    sheets: &[SpriteSheet],
     name_cache: &mut HashMap<String, egui::TextureHandle>,
     settings: &Settings,
     expanded: bool,
@@ -224,7 +228,7 @@ fn render_body(
     curve: Option<&LevelCurve>,
     unit_level: i32,
     talent_costs: &HashMap<u8, TalentCost>,
-    img022_sheets: &[GuiSpriteSheet],
+    img022_sheets: &[SpriteSheet],
     _settings: &Settings,
 ) {
     ui.add_space(6.0);
@@ -249,7 +253,7 @@ fn render_body(
     ui.add_space(TALENT_SECTION_SPACING);
 
     let current_lvl_val = *talent_levels.get(&(index as u8)).unwrap_or(&0);
-    let np_cost = core::cat::logic::talents::get_talent_np_cost(group.cost_id, current_lvl_val, talent_costs);
+    let np_cost = talents::get_talent_np_cost(group.cost_id, current_lvl_val, talent_costs);
 
     egui::Frame::none()
         .fill(egui::Color32::from_black_alpha(100))
@@ -263,7 +267,7 @@ fn render_body(
 
                 let mut drawn = false;
                 for sheet in img022_sheets {
-                    if let Some(cut) = sheet.core.cuts_map.get(&core::global::game::img022::ICON_NP_COST)
+                    if let Some(cut) = sheet.core.cuts_map.get(&img022::ICON_NP_COST)
                         && let Some(tex) = &sheet.texture_handle {
                             let aspect = cut.original_size.x / cut.original_size.y;
                             let size = egui::vec2(TALENT_NP_ICON_SIZE * aspect, TALENT_NP_ICON_SIZE);

@@ -1,20 +1,20 @@
-use eframe::egui;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 
-use nyanko::graphics::animation::{Unit, Anim};
-use core::animation::logic::canvas::GlowRenderer;
+use eframe::egui;
+use nyanko::graphics::actor::{Animation, Unit};
 
-use core::animation::export::state::ExporterState;
-use core::animation::export::process::calculate_export_time;
 use core::animation::export::encoding::{self, EncoderMessage};
+use core::animation::export::process::calculate_export_time;
+use core::animation::export::state::ExporterState;
+use core::animation::logic::canvas::GlowRenderer;
 
 pub fn process_frame(
     ui: &mut egui::Ui,
     rect: egui::Rect,
     state: &mut ExporterState,
     unit: Arc<Unit>,
-    animation: Option<Arc<Anim>>,
+    animation: Option<Arc<Animation>>,
     renderer_reference: Arc<Mutex<Option<GlowRenderer>>>,
     current_time: f32,
 ) {

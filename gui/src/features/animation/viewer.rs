@@ -1,22 +1,27 @@
-use eframe::egui;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use nyanko::graphics::animation::{Unit, Anim};
-use core::animation::logic::canvas::GlowRenderer;
+use eframe::egui;
+use nyanko::graphics::actor::{Animation, Unit};
 
-use core::animation::logic::constants::{IDX_NONE, IDX_MODEL, IDX_SPIRIT, IDX_WALK, IDX_IDLE, IDX_ATTACK, IDX_KB, IDX_BURROW, IDX_SURFACE};
-use core::animation::export::state::{ExporterState, ExportMode};
+use core::animation::export::state::{ExportMode, ExporterState};
+use core::animation::logic::canvas::GlowRenderer;
+use core::animation::logic::constants::{
+    IDX_ATTACK, IDX_BURROW, IDX_IDLE, IDX_KB, IDX_MODEL, IDX_NONE, IDX_SPIRIT,
+    IDX_SURFACE, IDX_WALK,
+};
 use core::settings::logic::state::Settings;
-use crate::features::animation::{process, canvas, controls, export};
-use crate::features::animation::controls::render_controls_overlay;
+
 use crate::global::shared::DragGuard;
+
+use super::controls::render_controls_overlay;
+use super::{canvas, controls, export, process};
 
 pub struct AnimViewer {
     pub zoom_level: f32,
     pub target_zoom_level: f32,
     pub pan_offset: egui::Vec2,
-    pub current_anim: Option<Arc<Anim>>,
+    pub current_anim: Option<Arc<Animation>>,
     pub current_frame: f32,
     pub is_playing: bool,
     pub playback_speed: f32,
@@ -136,7 +141,7 @@ impl AnimViewer {
 
     pub fn load_anim(&mut self, path: &Path, settings: &Settings) {
         if let Ok(anim_bytes) = std::fs::read(path)
-            && let Some(anim) = Anim::parse(&anim_bytes) {
+            && let Some(anim) = Animation::parse(&anim_bytes) {
                 self.current_frame = 0.0;
                 self.loop_range = (None, None);
                 self.range_str_cache = (String::new(), String::new());
@@ -538,7 +543,7 @@ impl AnimViewer {
                         for target_idx in [IDX_WALK, IDX_IDLE, IDX_ATTACK, IDX_KB] {
                             if let Some((_, path)) = available_anims.iter().find(|(idx, _)| *idx == target_idx)
                                 && let Ok(bytes) = std::fs::read(path)
-                                    && let Some(anim) = Anim::parse(&bytes) {
+                                    && let Some(anim) = Animation::parse(&bytes) {
                                         showcase_anims.push(anim);
                                     }
                         }
@@ -587,7 +592,7 @@ impl AnimViewer {
                 available_anims.iter()
                     .find(|(idx, _)| *idx == target_idx)
                     .and_then(|(_, path)| std::fs::read(path).ok())
-                    .and_then(|bytes| Anim::parse(&bytes))
+                    .and_then(|bytes| Animation::parse(&bytes))
                     .map(|anim| anim.max_frame)
             };
 
@@ -595,7 +600,7 @@ impl AnimViewer {
                 available_anims.iter()
                     .find(|(idx, _)| *idx == target_idx)
                     .and_then(|(_, path)| std::fs::read(path).ok())
-                    .and_then(|bytes| Anim::parse(&bytes))
+                    .and_then(|bytes| Animation::parse(&bytes))
                     .map(|anim| anim.calculate_true_loop().unwrap_or(anim.max_frame))
             };
 
