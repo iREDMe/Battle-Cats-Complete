@@ -1,145 +1,97 @@
+use std::fs;
 use std::path::Path;
 
-use eframe::egui;
+use iced::Task;
+use smol::Timer;
+use tracing::{debug, info, warn};
 
-use core::cat::paths as cat_paths;
-use core::cat::waiter::{skilldescriptions, skilllevel};
-use core::global::assets;
-use core::global::game::waiter::{localizable, param};
-use core::global::io::json;
-use core::settings::logic::{lang, upd::UpdateMode};
+use core::common::dirs;
+use core::common::game::{localizable, param};
+use core::common::io::json;
+use core::modules::settings::{desktop, lang, ExceptionList, UpdateMode};
 
-use crate::updater;
+use crate::modules::home;
 
-use super::BattleCatsApp;
+use super::{logging, migrate, notice, updater, ActivePopup, BattleCatsApp, Message};
 
 impl BattleCatsApp {
-    pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
+    pub fn new() -> (Self, Task<Message>) {
+        let migration_notes = migrate::run();
+
         let mut app: Self = json::load("settings.json").unwrap_or_default();
+        app.app_state = json::load_state("state.json").unwrap_or_default();
 
-        crate::app::tracing::init(app.settings.general.enable_logging);
-        tracing::info!("Starting initialization sequence...");
+        logging::init_logging(app.settings.general.enable_logging);
 
-        core::settings::logic::exceptions::ExceptionList::sync_on_boot();
+        for note in migration_notes {
+            match note {
+                migrate::Note::Info(message) => info!("{}", message),
+                migrate::Note::Warn(message) => warn!("{}", message),
+            }
+        }
+
+        info!("Starting initialization sequence...");
+
+        app.cat_state.restore_state(&app.app_state.cat_data);
+        app.enemy_state.restore_state(&app.app_state.enemy_data);
+
+        if notice::should_show(&app.app_state.notice.acknowledged) {
+            info!("Notice {} not yet acknowledged, showing at startup", notice::hash());
+            app.notice_open = true;
+            app.sync_popup(ActivePopup::VersionNotice, true);
+        }
+
+        if let Some(state_dir) = dirs::state() {
+            let _ = fs::remove_file(state_dir.join("meta.json"));
+        }
+
+        ExceptionList::sync_on_boot();
 
         #[cfg(target_os = "linux")]
         {
-            tracing::debug!("Syncing Linux desktop data");
-            let _ = core::settings::logic::desktop::sync_desktop_data();
+            debug!("Syncing Linux desktop data");
+            let _ = desktop::sync_desktop_data();
         }
 
         lang::ensure_complete_list(&mut app.settings.general.language_priority);
 
-        tracing::debug!("Setting up custom fonts");
-        setup_custom_fonts(&creation_context.egui_ctx);
-
-        tracing::debug!("Refreshing mod state and cleaning up temp update files");
-        app.mod_state.data.refresh_mods();
+        debug!("Cleaning up temp update files");
         updater::cleanup_temp_files();
 
-        tracing::info!("Loading core tables");
+        info!("Loading core tables");
         let tables_dir = Path::new("game/tables");
         let loc_dir = Path::new("game/tables/localizable");
         let priority = &app.settings.general.language_priority;
 
-        app.param = param(tables_dir, priority).unwrap_or_else(|| Default::default());
+        app.param = param(tables_dir, priority).unwrap_or_default();
         app.localizable = localizable(loc_dir, priority);
 
-        let mut expected_hash = 0;
-        let mut needs_validation = false;
-
-        if let Some((hash, cached_cats)) = core::global::io::cache::load_with_hash::<Vec<core::cat::logic::scanner::CatEntry>>("cats_cache.bin") {
-            tracing::info!("Found cats_cache.bin (Hash: {})", hash);
-            expected_hash = hash;
-            needs_validation = true;
-
-            let cats_dir = Path::new(cat_paths::DIR_CATS);
-            let costs_arc = std::sync::Arc::new(skilllevel(cats_dir, priority));
-            let descs_arc = std::sync::Arc::new(skilldescriptions(cats_dir, priority));
-
-            app.cat_list_state.data.cats = cached_cats.into_iter().map(|mut cat| {
-                cat.talent_costs = std::sync::Arc::clone(&costs_arc);
-                cat.skill_descriptions = std::sync::Arc::clone(&descs_arc);
-                cat
-            }).collect();
-
-            app.cat_list_state.data.initialized = true;
+        let updater_task = if app.settings.general.update_mode != UpdateMode::Ignore {
+            info!("Checking for app updates at startup");
+            app.check_for_updates(false)
         } else {
-            tracing::info!("No cats_cache.bin found, triggering full cat scan");
-            app.cat_list_state.data.restart_scan(app.settings.scanner_config());
-        }
+            Task::none()
+        };
 
-        if let Some((hash, cached_enemies)) = core::global::io::cache::load_with_hash::<Vec<core::enemy::logic::scanner::EnemyEntry>>("enemies_cache.bin") {
-            tracing::info!("Found enemies_cache.bin (Hash: {})", hash);
-            expected_hash = hash;
-            needs_validation = true;
-            app.enemy_list_state.data.enemies = cached_enemies;
-            app.enemy_list_state.data.initialized = true;
-        } else {
-            tracing::info!("No enemies_cache.bin found, triggering full enemy scan");
-            app.enemy_list_state.data.restart_scan(app.settings.scanner_config());
-        }
+        let (home_state, home_task) = home::State::new();
+        app.home_state = home_state;
 
-        if let Some((hash, cached_registry)) = core::global::io::cache::load_with_hash::<core::stage::registry::StageRegistry>("stages_cache.bin") {
-            tracing::info!("Found stages_cache.bin (Hash: {})", hash);
-            expected_hash = hash;
-            needs_validation = true;
+        let icon_streams = Task::batch([
+            app.cat_state.icon_stream().map(Message::Cat),
+            app.enemy_state.icon_stream().map(Message::Enemy),
+            app.mods_state.icon_stream().map(Message::Mod),
+        ]);
 
-            app.stage_list_state.data.registry = cached_registry;
+        let boot_loads = Task::batch([
+            app.cat_state.start_load(&app.settings).map(Message::Cat),
+            app.enemy_state.start_load(&app.settings).map(Message::Enemy),
+            app.stage_state.start_load(&app.settings).map(Message::Stage),
+        ]);
 
-            let config = app.settings.scanner_config();
-            app.stage_list_state.data.load_dictionaries(&config);
+        let reveal_fallback = Task::future(Timer::after(super::WINDOW_SHOW_FALLBACK)).map(|_| Message::ShowWindow);
 
-            let enemies_ref = app.enemy_list_state.data.enemies.clone();
-            app.stage_list_state.data.sync_enemies(&enemies_ref);
+        info!("Initialization sequence complete");
 
-            app.stage_list_state.data.initialized = true;
-
-            tracing::info!("Triggering silent background validation scan for stages...");
-            app.stage_list_state.data.restart_scan(app.settings.scanner_config());
-        } else {
-            tracing::info!("No stages_cache.bin found, triggering full stage scan");
-            app.stage_list_state.data.restart_scan(app.settings.scanner_config());
-        }
-
-        if needs_validation {
-            tracing::debug!("Spawning hash validation thread");
-            let (tx, rx) = std::sync::mpsc::channel();
-            app.hash_rx = Some(rx);
-            let active_mod = core::global::resolver::get_active_mod();
-
-            std::thread::spawn(move || {
-                let cur_hash = core::global::io::cache::get_game_hash(active_mod.as_deref());
-                let is_valid = cur_hash == expected_hash && active_mod.is_none();
-                let _ = tx.send(is_valid);
-            });
-        }
-
-        if app.settings.general.update_mode != UpdateMode::Ignore {
-            tracing::info!("Checking for app updates at startup");
-            app.updater.check_for_updates(creation_context.egui_ctx.clone(), false);
-        }
-
-        tracing::info!("Initialization sequence complete");
-        app
+        (app, Task::batch([home_task.map(Message::Home), updater_task, icon_streams, boot_loads, reveal_fallback]))
     }
-}
-
-fn setup_custom_fonts(context: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert("jp_font".to_owned(), egui::FontData::from_static(assets::FONT_JP));
-    fonts.font_data.insert("kr_font".to_owned(), egui::FontData::from_static(assets::FONT_KR));
-    fonts.font_data.insert("tc_font".to_owned(), egui::FontData::from_static(assets::FONT_TC));
-    fonts.font_data.insert("thai_font".to_owned(), egui::FontData::from_static(assets::FONT_TH));
-
-    let families = [egui::FontFamily::Proportional, egui::FontFamily::Monospace];
-    for family in families {
-        let Some(list_ref) = fonts.families.get_mut(&family) else { continue; };
-
-        list_ref.push("jp_font".to_owned());
-        list_ref.push("kr_font".to_owned());
-        list_ref.push("tc_font".to_owned());
-        list_ref.push("thai_font".to_owned());
-    }
-    context.set_fonts(fonts);
 }
