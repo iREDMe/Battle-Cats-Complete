@@ -1,9 +1,6 @@
 use eframe::egui;
 
 use core::global::context::GlobalContext;
-// START | Nightly
-use core::settings::logic::nightly::NIGHTLY_FEATURES_ACTIVE;
-//  END  | Nightly
 
 use crate::features::cat::state::show as show_cats;
 use crate::features::data::manager::show as show_data;
@@ -34,7 +31,7 @@ impl Page {
             Self::Home => "Home",
             Self::Cats => "Cats",
             Self::Enemies => "Enemies",
-            Self::Stages => "🌙Stages🌙",
+            Self::Stages => "Stages",
             Self::Mods => "Mods",
             Self::Data => "Data",
             Self::Settings => "Settings",
@@ -53,14 +50,6 @@ pub const ALL_PAGES: &[Page] = &[
 ];
 
 pub fn draw(app: &mut BattleCatsApp, ctx: &egui::Context) {
-
-    // START | Nightly
-    NIGHTLY_FEATURES_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
-    if app.current_page == Page::Stages && !app.settings.general.enable_nightly {
-        app.current_page = Page::Home;
-    }
-    //  END  | Nightly
-
     let screen_rect = ctx.screen_rect();
 
     let sidebar_inner_width = 150.0;
@@ -102,7 +91,7 @@ pub fn draw(app: &mut BattleCatsApp, ctx: &egui::Context) {
     };
 
     match app.current_page {
-        Page::Home => home::show(ctx, &mut app.drag_guard),
+        Page::Home => home::show(ctx, &mut app.current_page, &mut app.settings, &mut app.drag_guard),
         Page::Cats => show_cats(ctx, &mut app.cat_list_state, &mut app.settings, global_ctx, &mut app.drag_guard),
         Page::Enemies => show_enemies(ctx, &mut app.enemy_list_state, &mut app.settings, global_ctx, &mut app.drag_guard),
         Page::Stages => show_stages(ctx, &mut app.stage_list_state, &mut app.settings, global_ctx),
@@ -142,12 +131,6 @@ pub fn draw(app: &mut BattleCatsApp, ctx: &egui::Context) {
                         ui.vertical_centered_justified(|ui| {
 
                             for page_enum in ALL_PAGES {
-                                // START | Nightly
-                                if *page_enum == Page::Stages && !app.settings.general.enable_nightly {
-                                    continue;
-                                }
-                                //  END  | Nightly
-
                                 ui.add_space(5.0);
                                 let btn_text = egui::RichText::new(page_enum.tab_name()).size(16.0);
                                 let is_selected = app.current_page == *page_enum;

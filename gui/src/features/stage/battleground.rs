@@ -1,28 +1,31 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use eframe::egui;
+use eframe::egui::{self, RichText};
+use nyanko::chapter::stage::{EnemyAmount, BossType};
+use nyanko::common::tools::file::{strip_html_tags, BreakHandling};
+use nyanko::chapter::map::{BonusType, ScoreBonusMapEntry, SpecialRulesMapEntry, RuleType};
 use tracing::{debug, instrument, warn};
 
 use core::enemy::logic::scanner::EnemyEntry;
 use core::global::context::GlobalContext;
 use core::global::utils::autocrop;
-use core::stage::data::specialrulesmap::{RuleType, SpecialRule};
-use core::stage::data::stage::{BossType, EnemyAmount};
 use core::stage::registry::{Map, Stage};
 
 use super::treasure::center_header;
 
+const SUBHEADER_SIZE: f32 = 14.0;
+
 fn format_enemy_amount(spawn_amount: &EnemyAmount) -> String {
     match spawn_amount {
         EnemyAmount::Infinite => "∞".to_string(),
-        EnemyAmount::Limit(limited_amount) => limited_amount.to_string(),
+        EnemyAmount::Limit(limit_amount) => limit_amount.to_string(),
     }
 }
 
 fn format_enemy_respawn(spawn_amount: &EnemyAmount, respawn_min_frames: u32, respawn_max_frames: u32) -> String {
-    let is_singular_enemy_spawn = spawn_amount == &EnemyAmount::Limit(1);
-    if is_singular_enemy_spawn {
+    let is_singular_spawn = spawn_amount == &EnemyAmount::Limit(1);
+    if is_singular_spawn {
         return "-".to_string();
     }
 
@@ -63,50 +66,55 @@ fn format_score(score: u32) -> String {
     score.to_string()
 }
 
-fn format_base_hp_percentage(base_hp_percentage: u32, is_dojo_mechanic: bool) -> String {
+fn format_base_hp_percentage(base_hp_perc: u32, is_dojo_mechanic: bool) -> String {
     if is_dojo_mechanic {
-        return base_hp_percentage.to_string();
+        return base_hp_perc.to_string();
     }
 
-    if base_hp_percentage == 100 {
+    if base_hp_perc == 100 {
         return "-".to_string();
     }
-    format!("{}%", base_hp_percentage)
-}
-
-fn strip_color_tags(input: &str) -> String {
-    let mut stripped = String::new();
-    let mut in_tag = false;
-
-    for character in input.chars() {
-        if character == '<' {
-            in_tag = true;
-        } else if character == '>' {
-            in_tag = false;
-        } else if !in_tag {
-            stripped.push(character);
-        }
-    }
-    stripped
+    format!("{}%", base_hp_perc)
 }
 
 #[instrument(skip(rule, global_ctx))]
-fn format_special_rule(rule: &SpecialRule, global_ctx: &GlobalContext) -> String {
-    let clean_key = rule.name_label.trim();
-    let explanation_key = clean_key.replace("Name", "Explanation");
+fn format_special_rule(rule: &SpecialRulesMapEntry, global_ctx: &GlobalContext) -> String {
+    let explanation_key = if !rule.explanation_label.is_empty() {
+        rule.explanation_label.clone()
+    } else if !rule.name_label.is_empty() {
+        rule.name_label.trim().replace("Name", "Explanation")
+    } else {
+        String::new()
+    };
 
-    let raw_description = global_ctx.localizable.lookup_or_empty(&explanation_key);
-    let mut description = strip_color_tags(&raw_description);
+    let raw_description = if !explanation_key.is_empty() {
+        global_ctx.localizable.lookup(&explanation_key).unwrap_or_default()
+    } else {
+        &String::new()
+    };
+
+    let mut description = strip_html_tags(&raw_description, BreakHandling::Space);
 
     if description.is_empty() {
-        let raw_title = global_ctx.localizable.lookup_or_empty(clean_key);
-        let mut title = strip_color_tags(&raw_title);
-
-        if title.is_empty() {
-            title = clean_key.to_string();
+        let mut fallback = String::new();
+        for target_rule in &rule.rules {
+            let formatted_rule = match target_rule {
+                RuleType::TrustFund(params) => format!("Trust Fund {:?}", params),
+                RuleType::CooldownEquality(params) => format!("Cooldown Equality {:?}", params),
+                RuleType::RarityLimit(params) => format!("Rarity Limit {:?}", params),
+                RuleType::CheapLabor(params) => format!("Cheap Labor {:?}", params),
+                RuleType::CatCost(params) => format!("Restrict Price {:?}", params),
+                RuleType::CatProduction(params) => format!("Restrict CD {:?}", params),
+                RuleType::TotalDeployLimit(params) => format!("Deploy Limit {:?}", params),
+                RuleType::MoreThanOne(params) => format!("Awesome Cat Spawn {:?}", params),
+                RuleType::MegaCatCannon(params) => format!("Awesome Cat Cannon {:?}", params),
+                RuleType::UniformMotion(params) => format!("Awesome Unit Speed {:?}", params),
+                RuleType::Unknown(id, params) => format!("Unknown Rule {} {:?}", id, params),
+            };
+            fallback.push_str(&formatted_rule);
+            fallback.push('\n');
         }
-
-        description = format!("【{}】 Localization data missing.", title);
+        description = fallback.trim().to_string();
     } else {
         for target_rule in &rule.rules {
             let parameters = match target_rule {
@@ -114,13 +122,49 @@ fn format_special_rule(rule: &SpecialRule, global_ctx: &GlobalContext) -> String
                 RuleType::CooldownEquality(params) => params,
                 RuleType::RarityLimit(params) => params,
                 RuleType::CheapLabor(params) => params,
-                RuleType::RestrictPrice(params) => params,
-                RuleType::RestrictCd(params) => params,
-                RuleType::DeployLimit(params) => params,
-                RuleType::AwesomeCatSpawn(params) => params,
-                RuleType::AwesomeCatCannon(params) => params,
-                RuleType::AwesomeUnitSpeed(params) => params,
+                RuleType::CatCost(params) => params,
+                RuleType::CatProduction(params) => params,
+                RuleType::TotalDeployLimit(params) => params,
+                RuleType::MoreThanOne(params) => params,
+                RuleType::MegaCatCannon(params) => params,
+                RuleType::UniformMotion(params) => params,
                 RuleType::Unknown(_, params) => params,
+            };
+
+            for param in parameters {
+                description = description.replacen("%d", &param.to_string(), 1);
+            }
+        }
+    }
+
+    description
+}
+
+#[instrument(skip(score_bonus, global_ctx))]
+fn format_score_bonus(score_bonus: &ScoreBonusMapEntry, global_ctx: &GlobalContext) -> String {
+    let lookup_key = if !score_bonus.explanation_label.is_empty() {
+        &score_bonus.explanation_label
+    } else {
+        &score_bonus.name_label
+    };
+
+    let raw_description = global_ctx.localizable.lookup(lookup_key).unwrap_or_default();
+    let mut description = strip_html_tags(&raw_description, BreakHandling::Space);
+
+    if description.is_empty() {
+        description = format!("【{}】 Localization data missing.", lookup_key);
+    } else {
+        for bonus in &score_bonus.bonuses {
+            let parameters = match bonus {
+                BonusType::Weaken(params) => params,
+                BonusType::Freeze(params) => params,
+                BonusType::Slow(params) => params,
+                BonusType::Knockback(params) => params,
+                BonusType::StrongAttack(params) => params,
+                BonusType::MassiveDamage(params) => params,
+                BonusType::StrongDefense(params) => params,
+                BonusType::Resist(params) => params,
+                BonusType::Unknown(_, params) => params,
             };
 
             for param in parameters {
@@ -162,44 +206,48 @@ pub fn draw(
     ui: &mut egui::Ui,
     stage_data: &Stage,
     map_data: &Map,
+    selected_crown: u8,
     enemy_registry: &HashMap<u32, EnemyEntry>,
     enemy_name_registry: &[String],
     texture_cache: &mut HashMap<u32, egui::TextureHandle>,
     global_ctx: GlobalContext
 ) {
-    ui.strong("Battleground");
+    ui.label(RichText::new("Battleground").strong().heading());
     ui.separator();
 
-    let restrictions = core::stage::logic::restrictions::parse_restrictions(stage_data, 0, global_ctx.clone());
+    let restrictions = core::stage::logic::restrictions::parse_restrictions(stage_data, selected_crown as i8, global_ctx.clone());
 
     if !restrictions.is_empty() {
         ui.add_space(4.0);
-        ui.label(egui::RichText::new("Stage Restrictions").strong());
+        ui.label(RichText::new("Restrictions").strong().size(SUBHEADER_SIZE));
 
-        ui.indent("stage_restrictions_indent", |ui| {
-            for restriction in &restrictions {
-                ui.label(format!("• {}", restriction));
-            }
-        });
+        for restriction in &restrictions {
+            ui.label(restriction);
+        }
     }
 
     if let Some(rule) = &map_data.special_rules {
         ui.add_space(8.0);
-        ui.label(egui::RichText::new("Special Rules").strong());
+        ui.label(RichText::new("Rules").strong().size(SUBHEADER_SIZE));
 
-        ui.indent("special_rules_indent", |ui| {
-            let rule_description = format_special_rule(rule, &global_ctx);
+        let rule_description = format_special_rule(rule, &global_ctx);
+        ui.label(rule_description);
 
-            ui.label(format!("• {}", rule_description));
-
-            if !map_data.invalid_combos.is_empty() {
-                ui.label(format!("• Disabled Combos: {} total", map_data.invalid_combos.len()));
-            }
-        });
+        if !map_data.invalid_combos.is_empty() {
+            ui.label(format!("Disabled Combos: {} total", map_data.invalid_combos.len()));
+        }
     }
 
-    if restrictions.is_empty() && map_data.special_rules.is_none() {
-        debug!("No stage restrictions or special rules found for current crown to display");
+    if let Some(score_bonus) = &map_data.score_bonuses {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Score Bonus").strong().size(SUBHEADER_SIZE));
+
+        let desc = format_score_bonus(score_bonus, &global_ctx);
+        ui.label(desc);
+    }
+
+    if restrictions.is_empty() && map_data.special_rules.is_none() && map_data.score_bonuses.is_none() {
+        debug!("No restrictions, special rules, or score bonuses found for current crown to display");
     } else {
         ui.add_space(8.0);
     }
@@ -209,8 +257,21 @@ pub fn draw(
         return;
     }
 
+    let crown_mag = match selected_crown {
+        1 => map_data.crown_2_mag.unwrap_or(100),
+        2 => map_data.crown_3_mag.unwrap_or(100),
+        3 => map_data.crown_4_mag.unwrap_or(100),
+        _ => map_data.crown_1_mag.unwrap_or(100),
+    };
+
     let show_score_column = stage_data.enemies.iter().any(|enemy| enemy.score > 0);
     let is_dojo_mechanic = stage_data.enemies.iter().any(|enemy| enemy.base_hp_perc > 100);
+
+    let has_split_magnification = stage_data.enemies.iter().any(|enemy| {
+        let final_hp_mag = (enemy.magnification * crown_mag) / 100;
+        let final_atk_mag = (enemy.atk_magnification * crown_mag) / 100;
+        final_hp_mag != final_atk_mag
+    });
 
     egui::Grid::new("enemy_grid")
         .striped(true)
@@ -219,8 +280,13 @@ pub fn draw(
         .show(ui, |grid| {
             center_header(grid, "Enemy");
             center_header(grid, "Count");
-            center_header(grid, "HP %");
-            center_header(grid, "Atk %");
+
+            if has_split_magnification {
+                center_header(grid, "Magnification %\n(HP% / ATK%)");
+            } else {
+                center_header(grid, "Magnification %");
+            }
+
             center_header(grid, if is_dojo_mechanic { "Dmg #" } else { "Base %" });
             center_header(grid, "Spawn");
             center_header(grid, "Respawn");
@@ -232,36 +298,36 @@ pub fn draw(
             center_header(grid, "Kills");
             grid.end_row();
 
-            for enemy_data in &stage_data.enemies {
+            for spawn in &stage_data.enemies {
                 let resolved_enemy_name = enemy_name_registry
-                    .get(enemy_data.id as usize)
+                    .get(spawn.enemy_id as usize)
                     .filter(|string_val| !string_val.is_empty())
                     .cloned()
-                    .unwrap_or_else(|| format!("{:03}-E", enemy_data.id));
+                    .unwrap_or_else(|| format!("{:03}-E", spawn.enemy_id));
 
                 grid.with_layout(egui::Layout::bottom_up(egui::Align::Center), |icon_layout| {
                     let has_rendered_icon = 'icon: {
-                        let Some(located_enemy_entry) = enemy_registry.get(&enemy_data.id) else {
+                        let Some(located_enemy_entry) = enemy_registry.get(&spawn.enemy_id) else {
                             break 'icon false;
                         };
                         let Some(enemy_icon_path) = &located_enemy_entry.icon_path else {
                             break 'icon false;
                         };
 
-                        if let std::collections::hash_map::Entry::Vacant(cache_entry) = texture_cache.entry(enemy_data.id) {
-                            debug!(enemy_id = enemy_data.id, "Texture cache miss, attempting processing");
+                        if let std::collections::hash_map::Entry::Vacant(cache_entry) = texture_cache.entry(spawn.enemy_id) {
+                            debug!(id = spawn.enemy_id, "Texture cache miss, attempting processing");
                             let Some(processed_color_image) = process_enemy_icon_texture(enemy_icon_path) else {
                                 break 'icon false;
                             };
                             let generated_texture_handle = egui_context.load_texture(
-                                format!("stage_enemy_icon_{}", enemy_data.id),
+                                format!("stage_enemy_icon_{}", spawn.enemy_id),
                                 processed_color_image,
                                 egui::TextureOptions::LINEAR
                             );
                             cache_entry.insert(generated_texture_handle);
                         }
 
-                        let Some(cached_texture_handle) = texture_cache.get(&enemy_data.id) else {
+                        let Some(cached_texture_handle) = texture_cache.get(&spawn.enemy_id) else {
                             break 'icon false;
                         };
                         let image_response = icon_layout.add(egui::Image::new(cached_texture_handle).max_size(egui::vec2(32.0, 32.0)));
@@ -271,24 +337,32 @@ pub fn draw(
 
                     if !has_rendered_icon {
                         icon_layout.add_space(6.0);
-                        let label_response = icon_layout.add(egui::Label::new(format!("{:03}", enemy_data.id)).wrap_mode(egui::TextWrapMode::Extend));
+                        let label_response = icon_layout.add(egui::Label::new(format!("{:03}", spawn.enemy_id)).wrap_mode(egui::TextWrapMode::Extend));
                         label_response.on_hover_text(resolved_enemy_name);
                     }
                 });
 
-                let formatted_amount = format_enemy_amount(&enemy_data.amount);
-                let formatted_base_hp = format_base_hp_percentage(enemy_data.base_hp_perc, is_dojo_mechanic);
-                let formatted_respawn = format_enemy_respawn(&enemy_data.amount, enemy_data.respawn_min, enemy_data.respawn_max);
-                let formatted_layer = format_layer(enemy_data.layer_min, enemy_data.layer_max);
-                let formatted_boss_type = format_boss_type(&enemy_data.boss_type);
-                let formatted_score = format_score(enemy_data.score);
-                let formatted_kill_count = format_kill_count(enemy_data.kill_count);
+                let final_hp_mag = (spawn.magnification * crown_mag) / 100;
+                let final_atk_mag = (spawn.atk_magnification * crown_mag) / 100;
+
+                let formatted_mag = if final_hp_mag == final_atk_mag {
+                    format!("{}%", final_hp_mag)
+                } else {
+                    format!("{}% / {}%", final_hp_mag, final_atk_mag)
+                };
+
+                let formatted_amount = format_enemy_amount(&spawn.amount);
+                let formatted_base_hp = format_base_hp_percentage(spawn.base_hp_perc, is_dojo_mechanic);
+                let formatted_respawn = format_enemy_respawn(&spawn.amount, spawn.respawn_min, spawn.respawn_max);
+                let formatted_layer = format_layer(spawn.layer_min, spawn.layer_max);
+                let formatted_boss_type = format_boss_type(&spawn.boss_type);
+                let formatted_score = format_score(spawn.score);
+                let formatted_kill_count = format_kill_count(spawn.kill_count);
 
                 center_enemy_text(grid, formatted_amount);
-                center_enemy_text(grid, format!("{}%", enemy_data.magnification));
-                center_enemy_text(grid, format!("{}%", enemy_data.atk_magnification));
+                center_enemy_text(grid, formatted_mag);
                 center_enemy_text(grid, formatted_base_hp);
-                center_enemy_text(grid, format!("{}f", enemy_data.start_frame));
+                center_enemy_text(grid, format!("{}f", spawn.start_frame));
                 center_enemy_text(grid, formatted_respawn);
                 center_enemy_text(grid, formatted_layer);
                 center_enemy_text(grid, formatted_boss_type);

@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
-use nyanko::graphics::actor::{Animation, Unit};
+use nyanko::graphics::rig::{Animation, Unit};
 
 use core::animation::export::encoding::{self, EncoderMessage};
 use core::animation::export::process::calculate_export_time;
@@ -38,7 +38,6 @@ pub fn process_frame(
         return;
     }
 
-    // Pass the dereferenced Option to the math calculator
     let frame_time = calculate_export_time(state, animation.as_deref(), current_time);
     let frame_delay_milliseconds = 1000.0 / state.fps as f32;
 

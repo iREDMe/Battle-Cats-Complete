@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use nyanko::common::{img015, Param};
+use nyanko::common::data::{img015, Param};
 use nyanko::enemy::abilities::{Identity, REGISTRY};
 use nyanko::enemy::unit::Battle;
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,6 @@ pub struct EnemyAbilityDisplayDef {
     pub formatter: fn(primary_value: i32, stats: &Battle, duration_frames: i32, magnification: Magnification, param: &Param) -> String,
 }
 
-// --- FORMATTERS ---
 
 fn fmt_time(frames: i32) -> String {
     format!("{:.2}s^{}f", frames as f32 / 30.0, frames)
@@ -156,14 +155,12 @@ fn fmt_multihit(stats: &Battle, magnification: Magnification) -> String {
 
 fn fmt_sage(param: &Param) -> String {
     let mut resistance_groups_by_percentage: HashMap<i32, Vec<&str>> = HashMap::new();
-
-    let to_percentage = |multiplier: f32| (multiplier * 100.0).round() as i32;
-
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_type_resist_weaken)).or_default().push("Weaken");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_type_resist_freeze)).or_default().push("Freeze");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_type_resist_slow)).or_default().push("Slow");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_type_resist_curse)).or_default().push("Curse");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_type_resist_knockback)).or_default().push("Knockback");
+    
+    resistance_groups_by_percentage.entry(param.sage_type_resist_weaken).or_default().push("Weaken");
+    resistance_groups_by_percentage.entry(param.sage_type_resist_freeze).or_default().push("Freeze");
+    resistance_groups_by_percentage.entry(param.sage_type_resist_slow).or_default().push("Slow");
+    resistance_groups_by_percentage.entry(param.sage_type_resist_curse).or_default().push("Curse");
+    resistance_groups_by_percentage.entry(param.sage_type_resist_knockback).or_default().push("Knockback");
 
     let base_description = "Crowd Control effects inflicted upon Sage Enemies are reduced by";
 
@@ -191,11 +188,9 @@ fn fmt_sage(param: &Param) -> String {
     }
 }
 
-// --- EXHAUSTIVE PRESENTATION MATCH ---
 
 pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
     match identity {
-        // --- TYPES ---
         Identity::TypeRed => EnemyAbilityDisplayDef {
             name: "Red",
             fallback: "Red",
@@ -267,7 +262,6 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             formatter: |_,_,_,_,_| "Traitless".into(),
         },
 
-        // --- HEADLINE 1 ---
         Identity::TypeDojo => EnemyAbilityDisplayDef {
             name: "Dojo",
             fallback: "Dojo",
@@ -332,7 +326,6 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             formatter: |_,_,_,_,_| "EVA Angel".into(),
         },
 
-        // --- HEADLINE 2 ---
         Identity::Kamikaze => EnemyAbilityDisplayDef {
             name: "Kamikaze",
             fallback: "Kamik",
@@ -383,19 +376,18 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             formatter: |_,_,_,_,_| "When hit with a Surge Attack, create a Surge of equal Type, Level, and Range".into(),
         },
 
-        // --- BODY 1 ---
         Identity::SingleAttack => EnemyAbilityDisplayDef {
             name: "Single Attack",
             fallback: "Sngl",
             icon: AbilityIcon::Standard(img015::ICON_SINGLE_ATTACK),
             group: DisplayGroup::Body1,
             formatter: |_, stats, _, _, _| {
-                let tba = fmt_time(stats.time_between_attacks);
+                let atk_cd = fmt_time(stats.attack_cooldown);
                 if stats.attack_2 > 0 {
-                    format!("Time between attacks {}", tba)
+                    format!("Attack cooldown {}", atk_cd)
                 } else {
                     let tbh = fmt_time(stats.time_until_attack_1);
-                    format!("Time between attacks {}\nTime before hit {}", tba, tbh)
+                    format!("Attack cooldown {}\nTime before hit {}", atk_cd, tbh)
                 }
             },
         },
@@ -405,12 +397,12 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             icon: AbilityIcon::Standard(img015::ICON_AREA_ATTACK),
             group: DisplayGroup::Body1,
             formatter: |_, stats, _, _, _| {
-                let tba = fmt_time(stats.time_between_attacks);
+                let atk_cd = fmt_time(stats.attack_cooldown);
                 if stats.attack_2 > 0 {
-                    format!("Time between attacks {}", tba)
+                    format!("Attack cooldown {}", atk_cd)
                 } else {
                     let tbh = fmt_time(stats.time_until_attack_1);
-                    format!("Time between attacks {}\nTime before hit {}", tba, tbh)
+                    format!("Attack cooldown {}\nTime before hit {}", atk_cd, tbh)
                 }
             },
         },
@@ -534,7 +526,6 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             formatter: |chance,_,_,_,_| format!("{}% Chance to Survive a lethal strike", chance),
         },
 
-        // --- BODY 2 ---
         Identity::Barrier => EnemyAbilityDisplayDef {
             name: "Barrier",
             fallback: "Barri",
@@ -640,10 +631,9 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
             fallback: "Unkwn",
             icon: AbilityIcon::Custom(CustomIcon::Unknown),
             group: DisplayGroup::Body2,
-            formatter: |_,_,_,_,_| "This Enemy has an undefined ability\nThe App may need to be updated".into(),
+            formatter: |_,_,_,_,_| "This Enemy may have an undefined ability\nBattle Cats Complete may need to be updated".into(),
         },
 
-        // --- FOOTER (IMMUNITIES) ---
         Identity::ImmuneWave => EnemyAbilityDisplayDef {
             name: "Immune Wave",
             fallback: "NoWav",
@@ -710,7 +700,6 @@ pub fn get_display_def(identity: Identity) -> EnemyAbilityDisplayDef {
     }
 }
 
-// --- STATS REGISTRY ---
 pub struct EnemyStatsDef {
     pub name: &'static str,
     pub display_name: &'static str,
@@ -771,7 +760,7 @@ pub const ENEMY_STATS_REGISTRY: &[EnemyStatsDef] = &[
             } else if stats.attack_2 > 0 && stats.time_until_attack_2 > 0 {
                 effective_foreswing = stats.time_until_attack_2;
             }
-            let cooldown_frames = stats.time_between_attacks.saturating_sub(1);
+            let cooldown_frames = stats.attack_cooldown.saturating_sub(1);
             let attack_cycle = (effective_foreswing + cooldown_frames).max(animation_frames);
 
             if attack_cycle > 0 { ((total_attack_damage as f32 * 30.0) / attack_cycle as f32).round() as i32 } else { 0 }
@@ -788,7 +777,7 @@ pub const ENEMY_STATS_REGISTRY: &[EnemyStatsDef] = &[
             } else if stats.attack_2 > 0 && stats.time_until_attack_2 > 0 {
                 effective_foreswing = stats.time_until_attack_2;
             }
-            let cooldown_frames = stats.time_between_attacks.saturating_sub(1);
+            let cooldown_frames = stats.attack_cooldown.saturating_sub(1);
             (effective_foreswing + cooldown_frames).max(animation_frames)
         },
         formatter: |cycle| format!("{}f", cycle),
@@ -801,7 +790,6 @@ pub const ENEMY_STATS_REGISTRY: &[EnemyStatsDef] = &[
     },
 ];
 
-// --- REGISTRY HELPER FUNCTIONS ---
 pub fn get_enemy_stat(name: &str) -> &'static EnemyStatsDef {
     ENEMY_STATS_REGISTRY.iter().find(|s| s.name == name).expect("Stat not found in registry")
 }

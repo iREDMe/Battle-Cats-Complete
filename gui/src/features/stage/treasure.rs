@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use eframe::egui;
+use eframe::egui::{self,  RichText};
 use nyanko::cat::unit::UnitBuy;
+use nyanko::chapter::stage::RewardStructure;
 
 use core::global::formats::gatyaitembuy::GatyaItemBuy;
 use core::global::formats::gatyaitemname::GatyaItemName;
 use core::global::utils::autocrop;
-use core::stage::data::mapstagedata::RewardStructure;
 use core::stage::logic::treasure;
 use core::stage::registry::Stage;
 
-// --- FORMATTERS & UTILS ---
+pub const TREASURE_TABLE_WIDTH: f32 = 345.0;
 
 fn format_drop_chance(raw_chance: u32, drop_rule: i32) -> String {
     if drop_rule == -3 || drop_rule == -4 {
@@ -49,7 +49,7 @@ fn format_treasure_rule(drop_rule: i32) -> &'static str {
     match drop_rule {
         1 => "Once, Then Unlimited",
         0 => "Unlimited",
-        -1 => "Raw Percentages (Unlimited)",
+        -1 => "Unlimited (%)",
         -3 => "Guaranteed (Once)",
         -4 => "Guaranteed (Unlimited)",
         _ => "Unknown Rule",
@@ -58,7 +58,7 @@ fn format_treasure_rule(drop_rule: i32) -> &'static str {
 
 pub fn center_header(ui: &mut egui::Ui, display_text: &str) {
     ui.centered_and_justified(|ui| {
-        ui.add(egui::Label::new(egui::RichText::new(display_text).strong()).wrap_mode(egui::TextWrapMode::Extend));
+        ui.add(egui::Label::new(RichText::new(display_text).strong()).wrap_mode(egui::TextWrapMode::Extend));
     });
 }
 
@@ -67,8 +67,6 @@ pub fn center_text(ui: &mut egui::Ui, display_text: impl Into<String>) {
         ui.add(egui::Label::new(display_text.into()).wrap_mode(egui::TextWrapMode::Extend));
     });
 }
-
-// --- MAIN UI DRAW LOOP ---
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
@@ -84,16 +82,17 @@ pub fn draw(
 ) {
     match &stage_data.rewards {
         RewardStructure::Treasure { drop_rule, drops } => {
-            let rule_description = format_treasure_rule(*drop_rule);
-            ui.strong(format!("Treasure | {}", rule_description));
-            ui.separator();
-
             let valid_drops_array: Vec<_> = drops.iter().filter(|drop_data| drop_data.chance > 0).collect();
 
             if valid_drops_array.is_empty() {
-                ui.label("No drops configured.");
                 return;
             }
+
+            ui.set_max_width(TREASURE_TABLE_WIDTH);
+
+            let rule_description = format_treasure_rule(*drop_rule);
+            ui.label(RichText::new(format!("Treasure | {}", rule_description)).strong().heading());
+            ui.separator();
 
             egui::Grid::new("reward_treasure_grid")
                 .striped(true)
@@ -107,7 +106,7 @@ pub fn draw(
 
                     for drop_data in valid_drops_array {
                         let drop_info = treasure::resolve_drop(
-                            drop_data.id,
+                            drop_data.item_id,
                             drop_data.amount,
                             item_buy_registry,
                             item_name_registry,
@@ -123,17 +122,18 @@ pub fn draw(
                             let mut has_rendered_icon = false;
 
                             if let Some(resolved_image_path) = drop_info.image_path {
-                                if !item_texture_cache.contains_key(&drop_data.id)
-                                    && let Some(processed_color_image) = process_item_icon_texture(&resolved_image_path) {
+                                if !item_texture_cache.contains_key(&drop_data.item_id) {
+                                    if let Some(processed_color_image) = process_item_icon_texture(&resolved_image_path) {
                                         let generated_texture_handle = egui_context.load_texture(
-                                            format!("treasure_item_icon_{}", drop_data.id),
+                                            format!("treasure_item_icon_{}", drop_data.item_id),
                                             processed_color_image,
                                             egui::TextureOptions::LINEAR
                                         );
-                                        item_texture_cache.insert(drop_data.id, generated_texture_handle);
+                                        item_texture_cache.insert(drop_data.item_id, generated_texture_handle);
                                     }
+                                }
 
-                                if let Some(cached_texture_handle) = item_texture_cache.get(&drop_data.id) {
+                                if let Some(cached_texture_handle) = item_texture_cache.get(&drop_data.item_id) {
                                     let image_response = icon_layout.add(egui::Image::new(cached_texture_handle).max_size(egui::vec2(32.0, 32.0)));
                                     image_response.on_hover_text(drop_info.name.clone());
                                     has_rendered_icon = true;
@@ -151,27 +151,28 @@ pub fn draw(
                 });
         }
         RewardStructure::Timed(timed_scores) => {
-            ui.strong("Timed Score Rewards");
-            ui.separator();
-
             if timed_scores.is_empty() {
-                ui.label("No timed rewards configured.");
                 return;
             }
+
+            ui.set_max_width(TREASURE_TABLE_WIDTH);
+
+            ui.strong("Timed Score Rewards");
+            ui.separator();
 
             egui::Grid::new("reward_timed_grid")
                 .striped(true)
                 .spacing([15.0, 4.0])
                 .min_row_height(32.0)
                 .show(ui, |grid| {
-                    center_header(grid, "Score Required");
+                    center_header(grid, "Score");
                     center_header(grid, "Item");
                     center_header(grid, "Amount");
                     grid.end_row();
 
                     for score_data in timed_scores {
                         let drop_info = treasure::resolve_drop(
-                            score_data.id,
+                            score_data.item_id,
                             score_data.amount,
                             item_buy_registry,
                             item_name_registry,
@@ -186,17 +187,18 @@ pub fn draw(
                             let mut has_rendered_icon = false;
 
                             if let Some(resolved_image_path) = drop_info.image_path {
-                                if !item_texture_cache.contains_key(&score_data.id)
-                                    && let Some(processed_color_image) = process_item_icon_texture(&resolved_image_path) {
+                                if !item_texture_cache.contains_key(&score_data.item_id) {
+                                    if let Some(processed_color_image) = process_item_icon_texture(&resolved_image_path) {
                                         let generated_texture_handle = egui_context.load_texture(
-                                            format!("treasure_item_icon_{}", score_data.id),
+                                            format!("treasure_item_icon_{}", score_data.item_id),
                                             processed_color_image,
                                             egui::TextureOptions::LINEAR
                                         );
-                                        item_texture_cache.insert(score_data.id, generated_texture_handle);
+                                        item_texture_cache.insert(score_data.item_id, generated_texture_handle);
                                     }
+                                }
 
-                                if let Some(cached_texture_handle) = item_texture_cache.get(&score_data.id) {
+                                if let Some(cached_texture_handle) = item_texture_cache.get(&score_data.item_id) {
                                     let image_response = icon_layout.add(egui::Image::new(cached_texture_handle).max_size(egui::vec2(32.0, 32.0)));
                                     image_response.on_hover_text(drop_info.name.clone());
                                     has_rendered_icon = true;
@@ -214,9 +216,6 @@ pub fn draw(
                 });
         }
         RewardStructure::None => {
-            ui.strong("Rewards");
-            ui.separator();
-            ui.label("No rewards for this stage.");
         }
     }
 }

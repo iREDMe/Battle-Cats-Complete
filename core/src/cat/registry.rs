@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use nyanko::cat::abilities::{Identity, REGISTRY};
 use nyanko::cat::unit::{Battle, UnitBuy};
-use nyanko::common::{img015, Param};
+use nyanko::common::data::{img015, Param};
 
 use crate::global::game::abilities::CustomIcon;
 
@@ -32,7 +32,6 @@ pub struct AbilityDisplayDef {
     pub formatter: fn(val1: i32, stats: &Battle, target: &str, duration_frames: i32, param: &Param) -> String,
 }
 
-// --- CORE STRING FORMATTERS ---
 
 fn fmt_time(frames: i32) -> String {
     format!("{:.2}s^{}f", frames as f32 / 30.0, frames)
@@ -132,20 +131,19 @@ fn fmt_multihit(stats: &Battle) -> String {
 
 fn fmt_sage(param: &Param) -> String {
     let mut resistance_groups_by_percentage: HashMap<i32, Vec<&str>> = HashMap::new();
-    let to_percentage = |multiplier: f32| (multiplier * 100.0).round() as i32;
-
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_weaken)).or_default().push("Weaken");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_freeze)).or_default().push("Freeze");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_slow)).or_default().push("Slow");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_curse)).or_default().push("Curse");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_other)).or_default().push("Knockback");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_other)).or_default().push("Delay");
-    resistance_groups_by_percentage.entry(to_percentage(param.sage_slayer_resist_warp)).or_default().push("Warp");
+    
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_weaken).or_default().push("Weaken");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_freeze).or_default().push("Freeze");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_slow).or_default().push("Slow");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_curse).or_default().push("Curse");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_other).or_default().push("Knockback");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_other).or_default().push("Delay");
+    resistance_groups_by_percentage.entry(param.sage_slayer_resist_warp).or_default().push("Warp");
 
     let base_description = format!(
         "Deals {:.1}× Damage to and takes {:.1}× Damage from Sage Enemies\nIgnores the Crowd Control resistance of Sage Enemies\nCrowd Control effects originating from Sage Enemies reduced by",
-        param.sage_slayer_attack_multiplier,
-        param.sage_slayer_defense_multiplier
+        param.sage_slayer_attack_multiplier as f32 / 1000.0,
+        param.sage_slayer_defense_multiplier as f32 / 1000.0
     );
 
     if resistance_groups_by_percentage.len() == 1 {
@@ -177,7 +175,6 @@ fn fmt_sage(param: &Param) -> String {
     format!("{}\n{}", base_description, formatted_resistance_lines.join("\n"))
 }
 
-// --- EXHAUSTIVE PRESENTATION MATCH ---
 
 pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
     match identity {
@@ -266,7 +263,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             formatter: |_,_,_,_,_| "Targets EVA Angels".into(),
         },
 
-        // --- HEADLINE 1 ---
         Identity::AttackOnly => AbilityDisplayDef {
             name: "Attack Only",
             fallback: "AtkOnly",
@@ -310,7 +306,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             formatter: |_, _, target, _, _| format!("Takes 1/6×~1/7× Damage from {}", target),
         },
 
-        // --- HEADLINE 2 ---
         Identity::Metal => AbilityDisplayDef {
             name: "Metal",
             fallback: "Metal",
@@ -366,7 +361,7 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             icon: AbilityIcon::Standard(img015::ICON_BEHEMOTH_SLAYER),
             group: DisplayGroup::Headline2,
             formatter: |_, stats, _, _, param| {
-                let mut formatted_text = format!("Deals {:.1}× Damage to and takes {:.1}× Damage from Behemoth Enemies", param.behemoth_slayer_attack_multiplier, param.behemoth_slayer_defense_multiplier);
+                let mut formatted_text = format!("Deals {:.1}× Damage to and takes {:.1}× Damage from Behemoth Enemies", param.behemoth_slayer_attack_multiplier as f32 / 1000.0, param.behemoth_slayer_defense_multiplier as f32 / 1000.0);
                 if stats.behemoth_dodge_chance > 0 {
                     formatted_text.push_str(&format!("\n{}% Chance to Dodge Behemoth Enemies for {}", stats.behemoth_dodge_chance, fmt_time(stats.behemoth_dodge_duration)));
                 }
@@ -428,19 +423,18 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             },
         },
 
-        // --- BODY 1 ---
         Identity::SingleAttack => AbilityDisplayDef {
             name: "Single Attack",
             fallback: "Sngl",
             icon: AbilityIcon::Standard(img015::ICON_SINGLE_ATTACK),
             group: DisplayGroup::Body1,
             formatter: |_, stats, _, _, _| {
-                let tba = fmt_time(stats.time_between_attacks);
+                let atk_cd = fmt_time(stats.attack_cooldown);
                 if stats.attack_2 > 0 {
-                    format!("Time between attacks {}", tba)
+                    format!("Attack cooldown {}", atk_cd)
                 } else {
                     let tbh = fmt_time(stats.time_until_attack_1);
-                    format!("Time between attacks {}\nTime before hit {}", tba, tbh)
+                    format!("Attack cooldown {}\nTime before hit {}", atk_cd, tbh)
                 }
             },
         },
@@ -450,12 +444,12 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             icon: AbilityIcon::Standard(img015::ICON_AREA_ATTACK),
             group: DisplayGroup::Body1,
             formatter: |_, stats, _, _, _| {
-                let tba = fmt_time(stats.time_between_attacks);
+                let atk_cd = fmt_time(stats.attack_cooldown);
                 if stats.attack_2 > 0 {
-                    format!("Time between attacks {}", tba)
+                    format!("Attack cooldown {}", atk_cd)
                 } else {
                     let tbh = fmt_time(stats.time_until_attack_1);
-                    format!("Time between attacks {}\nTime before hit {}", tba, tbh)
+                    format!("Attack cooldown {}\nTime before hit {}", atk_cd, tbh)
                 }
             },
         },
@@ -593,7 +587,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             formatter: |chance, _, _, _, _| format!("{}% Chance to pierce enemy Shields", chance),
         },
 
-        // --- BODY 2 ---
         Identity::Dodge => AbilityDisplayDef {
             name: "Dodge",
             fallback: "Dodge",
@@ -648,10 +641,9 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             fallback: "Unkwn",
             icon: AbilityIcon::Custom(CustomIcon::Unknown),
             group: DisplayGroup::Body2,
-            formatter: |_,_,_,_,_| "This Cat has an undefined ability\nThe App may need to be updated".into(),
+            formatter: |_,_,_,_,_| "This Cat may have an undefined ability\nBattle Cats Complete may need to be updated".into(),
         },
 
-        // --- FOOTER (IMMUNITIES) ---
         Identity::ImmuneWave => AbilityDisplayDef {
             name: "Immune Wave",
             fallback: "NoWav",
@@ -730,7 +722,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             formatter: |_,_,_,_,_| "Immune to Boss Shockwaves".into(),
         },
 
-        // --- FOOTER (RESISTANCES) ---
         Identity::ResistWeaken => AbilityDisplayDef {
             name: "Resist Weaken",
             fallback: "ReWkn",
@@ -795,7 +786,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
             formatter: |percent,_,_,_,_| format!("Resist Surge ({}%)", percent),
         },
 
-        // --- STAT TALENTS ---
         Identity::CostDown => AbilityDisplayDef {
             name: "Cost Down",
             fallback: "Cost-",
@@ -848,7 +838,6 @@ pub fn get_display_def(identity: Identity) -> AbilityDisplayDef {
     }
 }
 
-// --- STATS REGISTRY ---
 
 pub struct CatStatsDef {
     pub name: &'static str,
@@ -908,7 +897,7 @@ pub const CAT_STATS_REGISTRY: &[CatStatsDef] = &[
             let mut effective_foreswing = stats.time_until_attack_1;
             if stats.attack_3 > 0 && stats.time_until_attack_3 > 0 { effective_foreswing = stats.time_until_attack_3; }
             else if stats.attack_2 > 0 && stats.time_until_attack_2 > 0 { effective_foreswing = stats.time_until_attack_2; }
-            let cooldown_frames = stats.time_between_attacks.saturating_sub(1);
+            let cooldown_frames = stats.attack_cooldown.saturating_sub(1);
             let attack_cycle = (effective_foreswing + cooldown_frames).max(animation_frames);
             if attack_cycle > 0 { ((total_attack_damage as f32 * 30.0) / attack_cycle as f32).round() as i32 } else { 0 }
         },
@@ -923,7 +912,7 @@ pub const CAT_STATS_REGISTRY: &[CatStatsDef] = &[
             let mut effective_foreswing = stats.time_until_attack_1;
             if stats.attack_3 > 0 && stats.time_until_attack_3 > 0 { effective_foreswing = stats.time_until_attack_3; }
             else if stats.attack_2 > 0 && stats.time_until_attack_2 > 0 { effective_foreswing = stats.time_until_attack_2; }
-            let cooldown_frames = stats.time_between_attacks.saturating_sub(1);
+            let cooldown_frames = stats.attack_cooldown.saturating_sub(1);
             (effective_foreswing + cooldown_frames).max(animation_frames)
         },
         formatter: |frames| format!("{}f", frames),
@@ -971,14 +960,13 @@ pub const CAT_STATS_REGISTRY: &[CatStatsDef] = &[
     CatStatsDef {
         name: "TBA",
         display_name: "TBA",
-        get_value: |stats, _, _| stats.time_between_attacks,
-        formatter: |tba| format!("{}f", tba),
+        get_value: |stats, _, _| stats.attack_cooldown,
+        formatter: |atk_cd| format!("{}f", atk_cd),
         linked_talent_id: Some(61),
         talent_modifier_fmt: Some(|percent, _| format!("(-{}%)", percent)),
     },
 ];
 
-// --- REGISTRY HELPER FUNCTIONS ---
 
 pub fn get_cat_stat(name: &str) -> &'static CatStatsDef {
     CAT_STATS_REGISTRY.iter().find(|stat_definition| stat_definition.name == name).expect("CRITICAL: Hardcoded stat name was not found in CAT_STATS_REGISTRY")

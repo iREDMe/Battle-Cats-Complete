@@ -92,7 +92,7 @@ impl Default for DataConfigState {
             active_tab: DataTab::Import,
             selected_job: None,
             import_path: String::new(),
-            import_mode: ImportMode::Zip,
+            import_mode: ImportMode::Folder,
             adb_import_type: AdbImportType::All,
             adb_target: AdbTarget::Specific(Region::En),
             decrypt_path: String::new(),
@@ -121,8 +121,6 @@ impl Default for DataConfigState {
     }
 }
 
-// We extract the pure data update logic here.
-// The GUI will read the return flags from this function to decide when to trigger a repaint.
 pub struct UpdateFlags {
     pub import_finished_just_now: bool,
     pub needs_repaint: bool,

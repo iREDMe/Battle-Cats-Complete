@@ -24,24 +24,28 @@ impl GuiWatcher {
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res
                 && !matches!(event.kind, notify::EventKind::Access(_)) {
-                    for path in event.paths {
-                        let path_str = path.to_string_lossy().to_lowercase();
-                        if path_str.contains("raw") { continue; }
+                for path in event.paths {
+                    let path_str = path.to_string_lossy().to_lowercase();
+                    if path_str.contains("raw") { continue; }
 
-                        let components: Vec<_> = path.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect();
-                        if let Some(mods_idx) = components.iter().position(|c| c == "mods") {
-                            // mods_idx + 1 = The Mod Name
-                            // mods_idx + 2 = The Subfolder (patch, icons, loose, or background junk)
-                            if let Some(sub_folder) = components.get(mods_idx + 2)
-                                && sub_folder != "patch" && sub_folder != "icons" && sub_folder != "loose" {
-                                    continue; // Drop the event entirely
-                                }
-                        }
-
-                        let _ = internal_tx.send(path);
+                    if !path_str.contains("game") && !path_str.contains("mods") {
+                        continue;
                     }
+
+                    let components: Vec<_> = path.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect();
+                    if let Some(mods_idx) = components.iter().position(|c| c == "mods") {
+                        if let Some(sub_folder) = components.get(mods_idx + 2)
+                            && sub_folder != "patch" && sub_folder != "icons" && sub_folder != "loose" {
+                            continue;
+                        }
+                    }
+
+                    let _ = internal_tx.send(path);
                 }
+            }
         }).ok()?;
+
+        let _ = watcher.watch(Path::new("."), RecursiveMode::NonRecursive);
 
         let path = Path::new("game");
         if path.exists() {
@@ -78,7 +82,7 @@ fn debounce_loop(rx: Receiver<PathBuf>, final_sender: Sender<PathBuf>, ctx: egui
                     for path in pending_paths.drain() {
                         let _ = final_sender.send(path);
                     }
-                    ctx.request_repaint(); // THIS is what wakes up the app!
+                    ctx.request_repaint();
                 }
                 deadline = None;
                 max_deadline = None;
